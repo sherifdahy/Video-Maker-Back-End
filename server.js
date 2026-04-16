@@ -26,20 +26,50 @@ const UPLOAD_DIR = path.join(__dirname, "uploads");
   (d) => !fs.existsSync(d) && fs.mkdirSync(d, { recursive: true })
 );
 
-// ── Middleware ────────────────────────────────────────
-app.use(cors({
-  origin: [
-    "http://localhost:5173",
-    "https://video-maker-front-8p8mhl0dj-shrifm2017-1873s-projects.vercel.app"
-  ],
-  methods: ["GET", "POST", "DELETE"],
-  allowedHeaders: ["Content-Type"],
-}));
+// ══════════════════════════════════════════════════════
+//  CORS — يدعم روابط Vercel الديناميكية
+// ══════════════════════════════════════════════════════
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://localhost:5174",
+];
+
+const corsOptions = {
+  origin: function (origin, callback) {
+    // السماح بالطلبات بدون origin (مثل Postman, curl, تطبيقات الموبايل)
+    if (!origin) return callback(null, true);
+
+    // السماح بأي رابط Vercel خاص بمشروعك
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.match(/^https:\/\/video-maker-front.*\.vercel\.app$/) ||
+      origin.match(/^https:\/\/.*shrifm2017-1873s-projects\.vercel\.app$/)
+    ) {
+      return callback(null, true);
+    }
+
+    console.warn(`⛔ محظور بواسطة CORS: ${origin}`);
+    callback(new Error("Not allowed by CORS"));
+  },
+  methods: ["GET", "POST", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  credentials: true,
+  optionsSuccessStatus: 200,
+};
+
+// تطبيق CORS على جميع الطلبات
+app.use(cors(corsOptions));
+
+// معالجة صريحة لجميع طلبات preflight
+app.options("*", cors(corsOptions));
+
+// ── باقي Middleware ──────────────────────────────────
 app.use(express.json({ limit: "10mb" }));
 app.use("/output",  express.static(OUTPUT_DIR));
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-// ── Multer (background uploads) ───────────────────────
+// ── Multer (رفع الخلفيات) ────────────────────────────
 const upload = multer({
   dest: UPLOAD_DIR,
   limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
@@ -77,7 +107,7 @@ const run = (cmd, args, opts = {}) =>
     });
   });
 
-// Special handler for yt-dlp using exec and full path
+// معالج خاص لـ yt-dlp
 const runYtDlp = async (args, opts = {}) => {
   return new Promise((resolve, reject) => {
     execFile("yt-dlp", args, { maxBuffer: 100 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
@@ -93,40 +123,38 @@ const runYtDlp = async (args, opts = {}) => {
 const safeUnlink = (...files) =>
   files.forEach((f) => f && fs.existsSync(f) && fs.unlink(f, () => {}));
 
-/** Escape text for ffmpeg drawtext filter (Windows-safe) */
+/** تنظيف النص لفلتر drawtext في ffmpeg */
 const escText = (s) =>
   (s || "")
     .replace(/\\/g, "\\\\")
-    .replace(/'/g, "\u2019")   // replace smart quote
+    .replace(/'/g, "\u2019")
     .replace(/:/g, "\\:")
-    .replace(/\[/g, "\\[")
-    .replace(/\]/g, "\\]");
+    .replace(/$$/g, "\\[")
+    .replace(/$$/g, "\\]");
 
-/** Windows font path for ffmpeg */
+/** مسارات الخطوط */
 const FONT = "C\\\\:/Windows/Fonts/arial.ttf";
 const FONT_ARABIC = "C\\\\:/Windows/Fonts/tahoma.ttf";
 
-// ── VTT → SRT converter ───────────────────────────────
+// ── VTT → SRT ─────────────────────────────────────────
 function vttToSrt(vttText) {
   let counter = 1;
   const lines = vttText.split(/\r?\n/);
   const out   = [];
   let i = 0;
 
-  // Skip WEBVTT header
+  // تخطي header الخاص بـ WEBVTT
   while (i < lines.length && !lines[i].includes("-->")) i++;
 
   while (i < lines.length) {
     const line = lines[i];
     if (line.includes("-->")) {
-      // Normalise timestamps: VTT uses . while SRT uses ,
       const timing = line.replace(/\./g, ",").replace(/<[^>]+>/g, "").trim();
       out.push(String(counter++));
       out.push(timing);
       i++;
       const textLines = [];
       while (i < lines.length && lines[i].trim() !== "") {
-        // Strip VTT tags
         textLines.push(lines[i].replace(/<[^>]+>/g, "").trim());
         i++;
       }
@@ -139,7 +167,7 @@ function vttToSrt(vttText) {
   return out.join("\n");
 }
 
-// ── SRT → ASS converter (Arabic-optimised) ───────────
+// ── SRT → ASS (محسّن للعربية) ─────────────────────────
 function srtToAss(srtText, opts = {}) {
   const {
     fontSize   = 52,
@@ -167,7 +195,6 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 `;
 
   const toAssTime = (t) => {
-    // "00:00:01,000" -> "0:00:01.00"
     const [hms, ms] = t.split(",");
     const [h, m, s] = hms.split(":");
     return `${parseInt(h)}:${m}:${s}.${(ms || "000").slice(0, 2)}`;
@@ -191,7 +218,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 }
 
 // ════════════════════════════════════════════════════
-//  BUILD FFMPEG FILTER GRAPH
+//  بناء أوامر FFmpeg
 // ════════════════════════════════════════════════════
 function buildFFmpegArgs({
   rawFile, outputFile,
@@ -217,7 +244,6 @@ function buildFFmpegArgs({
     bgIdx = inputCount++;
   } else if (bgType === "preset") {
     const p = BG_PRESETS[bgPreset] || BG_PRESETS["islamic-dark"];
-    // Use the 'from' color as solid background (ffmpeg lavfi)
     args.push("-f", "lavfi", "-i", `color=c=${p.from}:s=${W}x${H}:r=30`);
     bgIdx = inputCount++;
   } else if (bgType === "image" && bgImagePath) {
@@ -235,7 +261,7 @@ function buildFFmpegArgs({
   const chains = [];
   let prevLabel = "";
 
-  // 1. Background layer
+  // 1. طبقة الخلفية
   if (bgIdx >= 0) {
     let bgF = `[${bgIdx}:v]scale=${W}:${H},setsar=1`;
     if ((bgType === "image" || bgType === "video") && bgBlur > 0) {
@@ -246,17 +272,17 @@ function buildFFmpegArgs({
     }
     chains.push(`${bgF}[bg]`);
 
-    // 2. Scale main video
+    // 2. تحجيم الفيديو الرئيسي
     const vidW = Math.round(W * (videoScale / 100));
     chains.push(`[${vidIdx}:v]scale=${vidW}:-2[vid_s]`);
 
-    // 3. Overlay position
+    // 3. موقع الفيديو
     let xP = "(W-w)/2";
     let yP = videoPosition === "top"    ? "100"
            : videoPosition === "bottom" ? "H-h-100"
            :                             "(H-h)/2";
 
-    // 4. Glow effect
+    // 4. تأثير التوهج
     if (videoGlow) {
       chains.push(`[vid_s]split[vid_a][vid_b]`);
       chains.push(`[vid_b]scale=iw+30:ih+30,boxblur=12:1,colorchannelmixer=aa=0.6[glow]`);
@@ -267,20 +293,19 @@ function buildFFmpegArgs({
     }
     prevLabel = "comp0";
   } else {
-    // No background — pad to 1080×1920
     const vidW = Math.round(W * (videoScale / 100));
     chains.push(`[${vidIdx}:v]scale=${vidW}:-2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black[comp0]`);
     prevLabel = "comp0";
   }
 
-  // 5. Burn subtitles (ASS)
+  // 5. حرق الترجمة (ASS)
   if (subtitleFile && subtitleStyle !== "none") {
     const subPath = subtitleFile.replace(/\\/g, "/").replace(/:/g, "\\:");
     chains.push(`[${prevLabel}]ass='${subPath}'[comp1]`);
     prevLabel = "comp1";
   }
 
-  // 6. Text overlays (chained drawtext filters on a single video stream)
+  // 6. النصوص المتراكبة
   const textDraws = [];
 
   if (watermarkText) {
@@ -311,12 +336,11 @@ function buildFFmpegArgs({
   if (textDraws.length > 0) {
     chains.push(`[${prevLabel}]${textDraws.join(",")}[${finalLabel}]`);
   } else {
-    // rename last label
     const last = chains.pop();
-    chains.push(last.replace(`[${prevLabel}]`, `[${prevLabel}]`).replace(new RegExp(`\\[${prevLabel}\\]$`), `[${finalLabel}]`));
+    chains.push(last.replace(new RegExp(`\$$${prevLabel}\$$$`), `[${finalLabel}]`));
   }
 
-  // ── Assemble args ─────────────────────────────────
+  // ── تجميع الأوامر ─────────────────────────────────
   args.push("-filter_complex", chains.join(";"));
   args.push("-map", `[${finalLabel}]`);
 
@@ -345,10 +369,16 @@ function buildFFmpegArgs({
 //  API ROUTES
 // ════════════════════════════════════════════════════
 
-// ── GET /api/presets ──────────────────────────────────
+// ── GET /health ───────────────────────────────────────
 app.get("/health", (req, res) => {
-  res.send("OK");
+  res.json({
+    status: "ok",
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+  });
 });
+
+// ── GET /api/presets ──────────────────────────────────
 app.get("/api/presets", (_, res) => {
   res.json({
     backgrounds: Object.entries(BG_PRESETS).map(([id, { from, to }]) => ({
@@ -370,7 +400,7 @@ app.post("/api/info", async (req, res) => {
       "--user-agent", "Mozilla/5.0",
       url,
     ]);
-    
+
     const d = JSON.parse(json);
     res.json({
       title:       d.title,
@@ -387,7 +417,7 @@ app.post("/api/info", async (req, res) => {
         .sort((a, b) => parseInt(b.quality) - parseInt(a.quality)),
     });
   } catch (err) {
-    console.error("❌ Error fetching video info:", err.message);
+    console.error("❌ Error fetching video info:", err);
     res.status(500).json({ error: "تعذّر جلب معلومات الفيديو. تأكد من صحة الرابط وأن yt-dlp مثبتة." });
   }
 });
@@ -401,7 +431,6 @@ app.post("/api/transcript", async (req, res) => {
   const subBase = path.join(TMP_DIR, `${jobId}_sub`);
 
   try {
-    // Try official subs first, then auto-generated
     await runYtDlp([
       "--write-subs", "--write-auto-subs",
       "--sub-lang", `${lang},${lang === "ar" ? "en" : "ar"}`,
@@ -413,9 +442,8 @@ app.post("/api/transcript", async (req, res) => {
       "--user-agent", "Mozilla/5.0",
       "-o", subBase,
       url,
-    ]).catch(() => {}); // ignore errors — subs might not exist
+    ]).catch(() => {});
 
-    // Find downloaded subtitle file
     const files = fs.readdirSync(TMP_DIR).filter(
       (f) => f.startsWith(path.basename(subBase)) && /\.(vtt|srt)$/i.test(f)
     );
@@ -424,22 +452,18 @@ app.post("/api/transcript", async (req, res) => {
       return res.json({ transcript: null, message: "لا توجد ترجمة متاحة لهذا الفيديو" });
     }
 
-    // Pick preferred language
     const preferred =
       files.find((f) => f.includes(`.${lang}.`)) || files[0];
     const subPath = path.join(TMP_DIR, preferred);
     let content   = fs.readFileSync(subPath, "utf-8");
 
-    // Convert VTT to SRT if needed
     if (preferred.endsWith(".vtt")) {
       content = vttToSrt(content);
     }
 
-    // Save as SRT for later use
     const srtPath = subBase + ".srt";
     fs.writeFileSync(srtPath, content, "utf-8");
 
-    // Clean transcript text for display
     const cleanText = content
       .replace(/^\d+$/gm, "")
       .replace(/\d{2}:\d{2}:\d{2},\d{3} --> .*/g, "")
@@ -447,7 +471,6 @@ app.post("/api/transcript", async (req, res) => {
       .split("\n").map((l) => l.trim()).filter(Boolean)
       .join(" ");
 
-    // Cleanup temp vtt/srt originals
     files.forEach((f) => safeUnlink(path.join(TMP_DIR, f)));
 
     res.json({
@@ -501,7 +524,7 @@ app.post("/api/clip", async (req, res) => {
   let   assFile    = null;
 
   try {
-    // 1️⃣ Download clip segment
+    // 1️⃣ تحميل مقطع الفيديو
     const ytArgs = [
       "-f", audioOnly
         ? "bestaudio[ext=m4a]/bestaudio"
@@ -519,7 +542,7 @@ app.post("/api/clip", async (req, res) => {
     ];
     await runYtDlp(ytArgs);
 
-    // 2️⃣ Prepare subtitle file (ASS)
+    // 2️⃣ تحضير ملف الترجمة (ASS)
     if (subtitleStyle !== "none" && srtJobId) {
       const srtPath = path.join(TMP_DIR, `${srtJobId}_sub.srt`);
       if (fs.existsSync(srtPath)) {
@@ -536,7 +559,7 @@ app.post("/api/clip", async (req, res) => {
       }
     }
 
-    // 3️⃣ Build and run ffmpeg filter graph
+    // 3️⃣ بناء وتنفيذ أوامر ffmpeg
     const ffArgs = buildFFmpegArgs({
       rawFile, outputFile,
       bgType, bgColor, bgPreset, bgImagePath, bgVideoPath,
@@ -551,7 +574,7 @@ app.post("/api/clip", async (req, res) => {
     console.log("▶ ffmpeg", ffArgs.join(" "));
     await run("ffmpeg", ffArgs);
 
-    // Cleanup
+    // تنظيف الملفات المؤقتة
     safeUnlink(rawFile, assFile);
 
     res.json({
@@ -573,7 +596,7 @@ app.delete("/api/clip/:jobId", (req, res) => {
   res.json({ ok: true });
 });
 
-// ── Start ─────────────────────────────────────────────
+// ── تشغيل الخادم ─────────────────────────────────────
 app.listen(PORT, () => {
   console.log(`✅ الخادم يعمل على http://localhost:${PORT}`);
   console.log(`   المجلدات: tmp=${TMP_DIR} | output=${OUTPUT_DIR}`);
