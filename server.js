@@ -27,10 +27,7 @@ const UPLOAD_DIR = path.join(__dirname, "uploads");
 );
 
 // ── Middleware ────────────────────────────────────────
-app.use(cors({ 
-  origin: process.env.FRONTEND_URL || "http://localhost:5173",
-  credentials: true 
-}));
+app.use(cors());
 app.use(express.json({ limit: "10mb" }));
 app.use("/output",  express.static(OUTPUT_DIR));
 app.use("/uploads", express.static(UPLOAD_DIR));
