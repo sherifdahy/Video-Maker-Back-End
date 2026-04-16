@@ -172,6 +172,17 @@ const FONT_ARABIC = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
 
 // ── Cookies support ───────────────────────────────────
 const COOKIES_PATH = path.join(__dirname, "cookies.txt");
+
+// لو فيه env variable — اكتبه كملف
+if (process.env.COOKIES_CONTENT && !fs.existsSync(COOKIES_PATH)) {
+  try {
+    fs.writeFileSync(COOKIES_PATH, process.env.COOKIES_CONTENT, "utf-8");
+    console.log("🍪 cookies.txt created from environment variable");
+  } catch (e) {
+    console.error("❌ Failed to write cookies.txt:", e.message);
+  }
+}
+
 const hasCookies = fs.existsSync(COOKIES_PATH);
 const cookieArgs = hasCookies ? ["--cookies", COOKIES_PATH] : [];
 
@@ -184,10 +195,11 @@ if (hasCookies) {
 // ── Common yt-dlp args ────────────────────────────────
 const COMMON_YT_ARGS = [
   "--extractor-args",
-  "youtube:player_client=web,android",
+  "youtube:player_client=web",
   "--user-agent",
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
   "--no-check-certificates",
+  "--remote-components", "ejs:github",
   ...cookieArgs,
 ];
 
