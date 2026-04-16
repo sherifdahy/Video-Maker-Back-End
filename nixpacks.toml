@@ -1,20 +1,11 @@
-# nixpacks.toml - Dependencies for Railway deployment
-[phase.setup]
-# Core dependencies for video processing
-# yt-dlp is installed via nixpkgs (not pip) to avoid permission issues
-nixpkgs = ["ffmpeg", "yt-dlp", "nodejs"]
+[phases.setup]
+nixPkgs = ["ffmpeg", "yt-dlp", "nodejs_20", "deno"]
 
-[phase.install]
-# Install required tools and verify they work
-cmds = [
-  "ffmpeg -version",
-  "yt-dlp --version", 
-  "npm ci --production"
-]
+[phases.install]
+cmds = ["npm ci --production"]
 
-[phase.build]
-# Pre-production setup: create required directories
+[phases.build]
 cmds = ["mkdir -p tmp output uploads"]
 
-[phase.start]
+[start]
 cmd = "npm start"
