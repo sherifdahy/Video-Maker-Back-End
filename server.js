@@ -423,6 +423,119 @@ app.get("/api/debug", async (req, res) => {
 });
 
 // ── Debug yt-dlp test ─────────────────────────────────
+// ── اختبار ffmpeg مباشر ───────────────────────────────
+app.post("/api/debug/ffmpeg", async (req, res) => {
+  const testFile = path.join(TMP_DIR, "test_input.mp4");
+  const testOutput = path.join(TMP_DIR, "test_output.mp4");
+
+  try {
+    // 1. حمّل فيديو قصير
+    await runYtDlp([
+      "-f", "best[height<=360][ext=mp4]/best",
+      "--download-sections", "*0:00-0:05",
+      "--force-keyframes-at-cuts",
+      "--merge-output-format", "mp4",
+      ...COMMON_YT_ARGS,
+      "--no-playlist",
+      "--paths", TMP_DIR,
+      "--output", "test_input.mp4",
+      req.body.url || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    ]);
+
+    // 2. اختبر ffmpeg بأبسط أمر ممكن
+    const simpleArgs = [
+      "-y",
+      "-i", testFile,
+      "-t", "5",
+      "-c:v", "libx264",
+      "-preset", "ultrafast",
+      "-crf", "28",
+      "-c:a", "aac",
+      "-movflags", "+faststart",
+      testOutput,
+    ];
+
+    console.log("🧪 Testing ffmpeg:", simpleArgs.join(" "));
+    await run("ffmpeg", simpleArgs);
+
+    const exists = fs.existsSync(testOutput);
+    const size = exists ? fs.statSync(testOutput).size : 0;
+
+    safeUnlink(testFile, testOutput);
+
+    res.json({
+      success: true,
+      outputExists: exists,
+      outputSize: size,
+      message: "ffmpeg works!",
+    });
+  } catch (err) {
+    safeUnlink(testFile, testOutput);
+    res.json({
+      success: false,
+      error: String(err).slice(-800),
+    });
+  }
+});
+
+// ── اختبار filter_complex ─────────────────────────────
+app.post("/api/debug/filter", async (req, res) => {
+  const testFile = path.join(TMP_DIR, "test_filter_input.mp4");
+  const testOutput = path.join(TMP_DIR, "test_filter_output.mp4");
+
+  try {
+    await runYtDlp([
+      "-f", "best[height<=360][ext=mp4]/best",
+      "--download-sections", "*0:00-0:05",
+      "--force-keyframes-at-cuts",
+      "--merge-output-format", "mp4",
+      ...COMMON_YT_ARGS,
+      "--no-playlist",
+      "--paths", TMP_DIR,
+      "--output", "test_filter_input.mp4",
+      req.body.url || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    ]);
+
+    // اختبر مع filter_complex بسيط (scale + pad)
+    const filterArgs = [
+      "-y",
+      "-i", testFile,
+      "-filter_complex",
+      "[0:v]scale=918:-2,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black[vout]",
+      "-map", "[vout]",
+      "-map", "0:a?",
+      "-c:v", "libx264",
+      "-preset", "ultrafast",
+      "-crf", "28",
+      "-c:a", "aac",
+      "-movflags", "+faststart",
+      "-t", "5",
+      testOutput,
+    ];
+
+    console.log("🧪 Testing filter_complex:", filterArgs.join(" "));
+    await run("ffmpeg", filterArgs);
+
+    const exists = fs.existsSync(testOutput);
+    const size = exists ? fs.statSync(testOutput).size : 0;
+
+    safeUnlink(testFile, testOutput);
+
+    res.json({
+      success: true,
+      outputExists: exists,
+      outputSize: size,
+      message: "filter_complex works!",
+    });
+  } catch (err) {
+    safeUnlink(testFile, testOutput);
+    res.json({
+      success: false,
+      error: String(err).slice(-800),
+    });
+  }
+});
+
 app.post("/api/debug/ytdlp", async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "الرابط مطلوب" });
@@ -620,7 +733,13 @@ app.post("/api/clip", async (req, res) => {
     });
 
     console.log("▶ ffmpeg", ffArgs.join(" "));
-    await run("ffmpeg", ffArgs);
+    try {
+      await run("ffmpeg", ffArgs);
+    } catch (ffErr) {
+      console.error("❌ FFmpeg FULL ERROR:");
+      console.error(String(ffErr).slice(-1000));
+      throw new Error("FFmpeg error: " + String(ffErr).slice(-500));
+    }
 
     // تنظيف الملفات المؤقتة
     safeUnlink(rawFile, assFile);
