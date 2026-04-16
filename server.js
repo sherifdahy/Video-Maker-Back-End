@@ -376,7 +376,44 @@ function buildFFmpegArgs({
 // ════════════════════════════════════════════════════
 //  API ROUTES
 // ════════════════════════════════════════════════════
+app.get("/api/debug", async (req, res) => {
+  const results = {
+    node: process.version,
+    platform: process.platform,
+    port: PORT,
+    uptime: process.uptime(),
+    dirs: {
+      tmp: fs.existsSync(TMP_DIR),
+      output: fs.existsSync(OUTPUT_DIR),
+      uploads: fs.existsSync(UPLOAD_DIR),
+    },
+    tools: {},
+  };
 
+  try {
+    const ytVer = await run("yt-dlp", ["--version"]);
+    results.tools.ytdlp = { installed: true, version: ytVer };
+  } catch (err) {
+    results.tools.ytdlp = { installed: false, error: String(err).slice(0, 200) };
+  }
+
+  try {
+    const ffVer = await run("ffmpeg", ["-version"]);
+    results.tools.ffmpeg = { installed: true, version: ffVer.split("\n")[0] };
+  } catch (err) {
+    results.tools.ffmpeg = { installed: false, error: String(err).slice(0, 200) };
+  }
+
+  // فحص deno
+  try {
+    const denoVer = await run("deno", ["--version"]);
+    results.tools.deno = { installed: true, version: denoVer.split("\n")[0] };
+  } catch (err) {
+    results.tools.deno = { installed: false, error: String(err).slice(0, 200) };
+  }
+
+  res.json(results);
+});
 // ── Root ──────────────────────────────────────────────
 app.get("/", (req, res) => {
   res.json({
