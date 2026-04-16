@@ -1,0 +1,21 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# .dockerignore for Backend
+# ══════════════════════════════════════════════════════════════════════════════
+
+node_modules
+npm-debug.log
+.env
+.env.local
+.git
+.gitignore
+README.md
+.vscode
+.idea
+*.swp
+.DS_Store
+tmp/
+output/
+uploads/
+coverage/
+.nyc_output
+test/
