@@ -1,55 +1,36 @@
-# ═══════════════════════════════════════════════════════════
-# Dockerfile for Video Maker Backend - Production Ready
-# ═══════════════════════════════════════════════════════════
+FROM node:20-slim
 
-FROM node:18-alpine
-
-LABEL maintainer="Your Name <your-email@example.com>"
-LABEL description="Video Maker Backend - YouTube Video Processor"
-
-# Install system dependencies
-# ffmpeg: video processing
-# yt-dlp: video downloading
-# python3 & py3-pip: for yt-dlp
-RUN apk add --no-cache \
+# تثبيت الأدوات المطلوبة
+RUN apt-get update && apt-get install -y \
     ffmpeg \
     python3 \
-    py3-pip \
+    python3-pip \
     curl \
-    && pip3 install --break-system-packages --no-cache-dir yt-dlp
+    unzip \
+    && pip3 install --break-system-packages yt-dlp \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
 
+# تثبيت deno
+RUN curl -fsSL https://deno.land/install.sh | sh
+ENV DENO_INSTALL="/root/.deno"
+ENV PATH="${DENO_INSTALL}/bin:${PATH}"
+
+# مجلد العمل
 WORKDIR /app
 
-# Copy package files
+# نسخ ملفات المشروع
 COPY package*.json ./
+RUN npm ci --production
 
-# Install Node dependencies (production only)
-RUN npm ci --omit=dev && \
-    npm cache clean --force
-
-# Copy application code
 COPY . .
 
-# Create necessary directories
-RUN mkdir -p tmp output uploads && \
-    chmod -R 755 tmp output uploads
+# إنشاء المجلدات مع صلاحيات كاملة
+RUN mkdir -p /app/tmp /app/output /app/uploads && \
+    chmod -R 777 /app/tmp /app/output /app/uploads
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=40s --retries=3 \
-    CMD curl -f http://localhost:3001/health || exit 1
+# المنفذ
+EXPOSE 8080
 
-# Expose port
-EXPOSE 3001
-
-# Environment variables
-ENV NODE_ENV=production
-ENV PORT=3001
-
-# Non-root user for security
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-USER nodejs
-
-# Start server
+# تشغيل التطبيق
 CMD ["node", "server.js"]
