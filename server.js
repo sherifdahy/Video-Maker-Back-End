@@ -171,7 +171,19 @@ const FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
 const FONT_ARABIC = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
 
 // ── Cookies support ───────────────────────────────────
+// ── Cookies support ───────────────────────────────────
 const COOKIES_PATH = path.join(__dirname, "cookies.txt");
+
+// لو فيه env variable — اكتبه كملف
+if (process.env.COOKIES_CONTENT && !fs.existsSync(COOKIES_PATH)) {
+  try {
+    fs.writeFileSync(COOKIES_PATH, process.env.COOKIES_CONTENT, "utf-8");
+    console.log("🍪 cookies.txt created from environment variable");
+  } catch (e) {
+    console.error("❌ Failed to write cookies.txt:", e.message);
+  }
+}
+
 const hasCookies = fs.existsSync(COOKIES_PATH);
 const cookieArgs = hasCookies ? ["--cookies", COOKIES_PATH] : [];
 
