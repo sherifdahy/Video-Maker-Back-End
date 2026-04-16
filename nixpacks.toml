@@ -1,11 +1,8 @@
-# nixpacks.toml - Dependencies for Railway deployment
 [phases.setup]
 nixPkgs = ["ffmpeg", "yt-dlp", "nodejs_20"]
 
 [phases.install]
-cmds = [
-  "npm ci --production"
-]
+cmds = ["npm ci --production"]
 
 [phases.build]
 cmds = ["mkdir -p tmp output uploads"]

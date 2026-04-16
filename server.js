@@ -1,9 +1,6 @@
 /**
  * ════════════════════════════════════════════════════
  *  مقطّع الفيديو — الخادم المحسّن v2.0
- *  Video Maker Backend — Enhanced
- *  yt-dlp + ffmpeg: background composition, subtitles,
- *  speaker cards, layout control, reel optimization
  * ════════════════════════════════════════════════════
  */
 
@@ -12,7 +9,7 @@ const cors    = require("cors");
 const multer  = require("multer");
 const fs      = require("fs");
 const path    = require("path");
-const { execFile, exec } = require("child_process");
+const { execFile } = require("child_process");
 const { v4: uuidv4 } = require("uuid");
 
 const app  = express();
@@ -27,52 +24,31 @@ const UPLOAD_DIR = path.join(__dirname, "uploads");
 );
 
 // ══════════════════════════════════════════════════════
-//  CORS — يدعم روابط Vercel الديناميكية
+//  CORS — مفتوح للكل
 // ══════════════════════════════════════════════════════
-const allowedOrigins = [
-  "http://localhost:5173",
-  "http://localhost:3000",
-  "http://localhost:5174",
-];
-
-const corsOptions = {
-  origin: function (origin, callback) {
-    // السماح بالطلبات بدون origin (مثل Postman, curl, تطبيقات الموبايل)
-    if (!origin) return callback(null, true);
-
-    // السماح بأي رابط Vercel خاص بمشروعك
-    if (
-      allowedOrigins.includes(origin) ||
-      origin.match(/^https:\/\/video-maker-front.*\.vercel\.app$/) ||
-      origin.match(/^https:\/\/.*shrifm2017-1873s-projects\.vercel\.app$/)
-    ) {
-      return callback(null, true);
-    }
-
-    console.warn(`⛔ محظور بواسطة CORS: ${origin}`);
-    callback(new Error("Not allowed by CORS"));
-  },
-  methods: ["GET", "POST", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"],
-  credentials: true,
-  optionsSuccessStatus: 200,
-};
-
-// تطبيق CORS على جميع الطلبات
-app.use(cors(corsOptions));
+app.use(cors({
+  origin: "*",
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+}));
 
 // معالجة صريحة لجميع طلبات preflight
-app.options("*", cors(corsOptions));
+app.options("*", (req, res) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
+  res.status(200).end();
+});
 
 // ── باقي Middleware ──────────────────────────────────
 app.use(express.json({ limit: "10mb" }));
 app.use("/output",  express.static(OUTPUT_DIR));
 app.use("/uploads", express.static(UPLOAD_DIR));
 
-// ── Multer (رفع الخلفيات) ────────────────────────────
+// ── Multer ────────────────────────────────────────────
 const upload = multer({
   dest: UPLOAD_DIR,
-  limits: { fileSize: 100 * 1024 * 1024 }, // 100 MB
+  limits: { fileSize: 100 * 1024 * 1024 },
   fileFilter: (_, file, cb) => {
     const ok = /\.(jpg|jpeg|png|webp|mp4|mov|webm)$/i.test(file.originalname);
     cb(ok ? null : new Error("نوع الملف غير مدعوم"), ok);
@@ -107,7 +83,6 @@ const run = (cmd, args, opts = {}) =>
     });
   });
 
-// معالج خاص لـ yt-dlp
 const runYtDlp = async (args, opts = {}) => {
   return new Promise((resolve, reject) => {
     execFile("yt-dlp", args, { maxBuffer: 100 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
@@ -123,7 +98,6 @@ const runYtDlp = async (args, opts = {}) => {
 const safeUnlink = (...files) =>
   files.forEach((f) => f && fs.existsSync(f) && fs.unlink(f, () => {}));
 
-/** تنظيف النص لفلتر drawtext في ffmpeg */
 const escText = (s) =>
   (s || "")
     .replace(/\\/g, "\\\\")
@@ -132,9 +106,8 @@ const escText = (s) =>
     .replace(/$$/g, "\\[")
     .replace(/$$/g, "\\]");
 
-/** مسارات الخطوط */
-const FONT = "C\\\\:/Windows/Fonts/arial.ttf";
-const FONT_ARABIC = "C\\\\:/Windows/Fonts/tahoma.ttf";
+const FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+const FONT_ARABIC = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
 
 // ── VTT → SRT ─────────────────────────────────────────
 function vttToSrt(vttText) {
@@ -142,10 +115,7 @@ function vttToSrt(vttText) {
   const lines = vttText.split(/\r?\n/);
   const out   = [];
   let i = 0;
-
-  // تخطي header الخاص بـ WEBVTT
   while (i < lines.length && !lines[i].includes("-->")) i++;
-
   while (i < lines.length) {
     const line = lines[i];
     if (line.includes("-->")) {
@@ -167,14 +137,12 @@ function vttToSrt(vttText) {
   return out.join("\n");
 }
 
-// ── SRT → ASS (محسّن للعربية) ─────────────────────────
+// ── SRT → ASS ─────────────────────────────────────────
 function srtToAss(srtText, opts = {}) {
   const {
-    fontSize   = 52,
-    color      = "FFFFFF",
-    bgColor    = "80000000",
-    style      = "center-box",
-    position   = "bottom",
+    fontSize = 52, color = "FFFFFF",
+    bgColor = "80000000", style = "center-box",
+    position = "bottom",
   } = opts;
 
   const align = style === "center-box" ? 5 : (position === "top" ? 8 : 2);
@@ -218,7 +186,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 }
 
 // ════════════════════════════════════════════════════
-//  بناء أوامر FFmpeg
+//  FFmpeg Args Builder
 // ════════════════════════════════════════════════════
 function buildFFmpegArgs({
   rawFile, outputFile,
@@ -237,7 +205,6 @@ function buildFFmpegArgs({
   let inputCount = 0;
   let bgIdx = -1, vidIdx = 0;
 
-  // ── Inputs ────────────────────────────────────────
   if (bgType === "color") {
     const hex = (bgColor || "#0a1628").replace("#", "");
     args.push("-f", "lavfi", "-i", `color=c=${hex}:s=${W}x${H}:r=30`);
@@ -257,32 +224,25 @@ function buildFFmpegArgs({
   args.push("-i", rawFile);
   vidIdx = inputCount++;
 
-  // ── Filter Graph ──────────────────────────────────
   const chains = [];
   let prevLabel = "";
 
-  // 1. طبقة الخلفية
   if (bgIdx >= 0) {
     let bgF = `[${bgIdx}:v]scale=${W}:${H},setsar=1`;
-    if ((bgType === "image" || bgType === "video") && bgBlur > 0) {
+    if ((bgType === "image" || bgType === "video") && bgBlur > 0)
       bgF += `,boxblur=${Math.round(bgBlur * 2)}:1`;
-    }
-    if ((bgType === "image" || bgType === "video") && bgBrightness !== 1) {
+    if ((bgType === "image" || bgType === "video") && bgBrightness !== 1)
       bgF += `,eq=brightness=${(bgBrightness - 1).toFixed(2)}`;
-    }
     chains.push(`${bgF}[bg]`);
 
-    // 2. تحجيم الفيديو الرئيسي
     const vidW = Math.round(W * (videoScale / 100));
     chains.push(`[${vidIdx}:v]scale=${vidW}:-2[vid_s]`);
 
-    // 3. موقع الفيديو
     let xP = "(W-w)/2";
-    let yP = videoPosition === "top"    ? "100"
+    let yP = videoPosition === "top" ? "100"
            : videoPosition === "bottom" ? "H-h-100"
-           :                             "(H-h)/2";
+           : "(H-h)/2";
 
-    // 4. تأثير التوهج
     if (videoGlow) {
       chains.push(`[vid_s]split[vid_a][vid_b]`);
       chains.push(`[vid_b]scale=iw+30:ih+30,boxblur=12:1,colorchannelmixer=aa=0.6[glow]`);
@@ -298,14 +258,12 @@ function buildFFmpegArgs({
     prevLabel = "comp0";
   }
 
-  // 5. حرق الترجمة (ASS)
   if (subtitleFile && subtitleStyle !== "none") {
     const subPath = subtitleFile.replace(/\\/g, "/").replace(/:/g, "\\:");
     chains.push(`[${prevLabel}]ass='${subPath}'[comp1]`);
     prevLabel = "comp1";
   }
 
-  // 6. النصوص المتراكبة
   const textDraws = [];
 
   if (watermarkText) {
@@ -313,14 +271,12 @@ function buildFFmpegArgs({
       `drawtext=fontfile='${FONT_ARABIC}':text='${escText(watermarkText)}':fontsize=26:fontcolor=white@0.8:x=20:y=20:shadowcolor=black@0.9:shadowx=2:shadowy=2`
     );
   }
-
   if (overlayText) {
     const yTxt = overlayPos === "top" ? "100" : "h-th-100";
     textDraws.push(
       `drawtext=fontfile='${FONT_ARABIC}':text='${escText(overlayText)}':fontsize=40:fontcolor=white:x=(w-tw)/2:y=${yTxt}:box=1:boxcolor=0x00000088:boxborderw=16:line_spacing=6`
     );
   }
-
   if (speakerName) {
     textDraws.push(
       `drawtext=fontfile='${FONT_ARABIC}':text='${escText(speakerName)}':fontsize=42:fontcolor=white:x=(w-tw)/2:y=h-240:box=1:boxcolor=0x00000099:boxborderw=18`
@@ -340,7 +296,6 @@ function buildFFmpegArgs({
     chains.push(last.replace(new RegExp(`\$$${prevLabel}\$$$`), `[${finalLabel}]`));
   }
 
-  // ── تجميع الأوامر ─────────────────────────────────
   args.push("-filter_complex", chains.join(";"));
   args.push("-map", `[${finalLabel}]`);
 
@@ -354,12 +309,9 @@ function buildFFmpegArgs({
   if (bgIdx >= 0) args.push("-shortest");
 
   args.push(
-    "-c:v", "libx264",
-    "-preset", "fast",
-    "-crf", "22",
-    "-pix_fmt", "yuv420p",
-    "-movflags", "+faststart",
-    outputFile
+    "-c:v", "libx264", "-preset", "fast",
+    "-crf", "22", "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart", outputFile
   );
 
   return args;
@@ -369,16 +321,26 @@ function buildFFmpegArgs({
 //  API ROUTES
 // ════════════════════════════════════════════════════
 
-// ── GET /health ───────────────────────────────────────
+// ── Root ──────────────────────────────────────────────
+app.get("/", (req, res) => {
+  res.json({
+    message: "Video Maker Backend is running!",
+    version: "2.0.0",
+    endpoints: ["/health", "/api/presets", "/api/info", "/api/clip"],
+  });
+});
+
+// ── Health ────────────────────────────────────────────
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
+    port: PORT,
   });
 });
 
-// ── GET /api/presets ──────────────────────────────────
+// ── Presets ───────────────────────────────────────────
 app.get("/api/presets", (_, res) => {
   res.json({
     backgrounds: Object.entries(BG_PRESETS).map(([id, { from, to }]) => ({
@@ -387,7 +349,7 @@ app.get("/api/presets", (_, res) => {
   });
 });
 
-// ── POST /api/info ────────────────────────────────────
+// ── Info ──────────────────────────────────────────────
 app.post("/api/info", async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "الرابط مطلوب" });
@@ -395,19 +357,16 @@ app.post("/api/info", async (req, res) => {
     const json = await runYtDlp([
       "--dump-json", "--no-playlist",
       "--extractor-args", "youtube:skip=hls/manifest,dash/manifest",
-      "--remote-components", "ejs:github",
-      "--js-runtimes", "node",
       "--user-agent", "Mozilla/5.0",
       url,
     ]);
-
     const d = JSON.parse(json);
     res.json({
-      title:       d.title,
-      thumbnail:   d.thumbnail,
-      duration:    d.duration,
+      title: d.title,
+      thumbnail: d.thumbnail,
+      duration: d.duration,
       durationStr: d.duration_string,
-      channel:     d.uploader,
+      channel: d.uploader,
       hasSubtitles: !!(d.subtitles && Object.keys(d.subtitles).length > 0),
       availableLangs: Object.keys(d.subtitles || {}),
       formats: (d.formats || [])
@@ -418,16 +377,16 @@ app.post("/api/info", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Error fetching video info:", err);
-    res.status(500).json({ error: "تعذّر جلب معلومات الفيديو. تأكد من صحة الرابط وأن yt-dlp مثبتة." });
+    res.status(500).json({ error: "تعذّر جلب معلومات الفيديو" });
   }
 });
 
-// ── POST /api/transcript ──────────────────────────────
+// ── Transcript ────────────────────────────────────────
 app.post("/api/transcript", async (req, res) => {
   const { url, lang = "ar" } = req.body;
   if (!url) return res.status(400).json({ error: "الرابط مطلوب" });
 
-  const jobId   = uuidv4();
+  const jobId = uuidv4();
   const subBase = path.join(TMP_DIR, `${jobId}_sub`);
 
   try {
@@ -436,30 +395,22 @@ app.post("/api/transcript", async (req, res) => {
       "--sub-lang", `${lang},${lang === "ar" ? "en" : "ar"}`,
       "--sub-format", "vtt/srt",
       "--extractor-args", "youtube:skip=hls/manifest,dash/manifest",
-      "--remote-components", "ejs:github",
-      "--js-runtimes", "node",
       "--skip-download", "--no-playlist",
       "--user-agent", "Mozilla/5.0",
-      "-o", subBase,
-      url,
+      "-o", subBase, url,
     ]).catch(() => {});
 
     const files = fs.readdirSync(TMP_DIR).filter(
       (f) => f.startsWith(path.basename(subBase)) && /\.(vtt|srt)$/i.test(f)
     );
 
-    if (files.length === 0) {
-      return res.json({ transcript: null, message: "لا توجد ترجمة متاحة لهذا الفيديو" });
-    }
+    if (files.length === 0)
+      return res.json({ transcript: null, message: "لا توجد ترجمة متاحة" });
 
-    const preferred =
-      files.find((f) => f.includes(`.${lang}.`)) || files[0];
+    const preferred = files.find((f) => f.includes(`.${lang}.`)) || files[0];
     const subPath = path.join(TMP_DIR, preferred);
-    let content   = fs.readFileSync(subPath, "utf-8");
-
-    if (preferred.endsWith(".vtt")) {
-      content = vttToSrt(content);
-    }
+    let content = fs.readFileSync(subPath, "utf-8");
+    if (preferred.endsWith(".vtt")) content = vttToSrt(content);
 
     const srtPath = subBase + ".srt";
     fs.writeFileSync(srtPath, content, "utf-8");
@@ -468,8 +419,7 @@ app.post("/api/transcript", async (req, res) => {
       .replace(/^\d+$/gm, "")
       .replace(/\d{2}:\d{2}:\d{2},\d{3} --> .*/g, "")
       .replace(/<[^>]+>/g, "")
-      .split("\n").map((l) => l.trim()).filter(Boolean)
-      .join(" ");
+      .split("\n").map((l) => l.trim()).filter(Boolean).join(" ");
 
     files.forEach((f) => safeUnlink(path.join(TMP_DIR, f)));
 
@@ -484,18 +434,18 @@ app.post("/api/transcript", async (req, res) => {
   }
 });
 
-// ── POST /api/upload-bg ───────────────────────────────
+// ── Upload Background ─────────────────────────────────
 app.post("/api/upload-bg", upload.single("file"), (req, res) => {
   if (!req.file) return res.status(400).json({ error: "لم يُرفق ملف" });
   const isVideo = /\.(mp4|mov|webm)$/i.test(req.file.originalname);
   res.json({
     path: req.file.path,
-    url:  `/uploads/${req.file.filename}`,
+    url: `/uploads/${req.file.filename}`,
     type: isVideo ? "video" : "image",
   });
 });
 
-// ── POST /api/clip ────────────────────────────────────
+// ── Clip ──────────────────────────────────────────────
 app.post("/api/clip", async (req, res) => {
   const {
     url, startTime, endTime, quality = "720",
@@ -514,17 +464,16 @@ app.post("/api/clip", async (req, res) => {
     return res.status(400).json({ error: "الرابط ووقت البداية والنهاية مطلوبة" });
 
   const startSec = toSec(startTime);
-  const endSec   = toSec(endTime);
+  const endSec = toSec(endTime);
   if (endSec <= startSec)
     return res.status(400).json({ error: "وقت النهاية يجب أن يكون بعد وقت البداية" });
 
-  const jobId      = uuidv4();
-  const rawFile    = path.join(TMP_DIR, `${jobId}_raw.mp4`);
+  const jobId = uuidv4();
+  const rawFile = path.join(TMP_DIR, `${jobId}_raw.mp4`);
   const outputFile = path.join(OUTPUT_DIR, `${jobId}_reel.mp4`);
-  let   assFile    = null;
+  let assFile = null;
 
   try {
-    // 1️⃣ تحميل مقطع الفيديو
     const ytArgs = [
       "-f", audioOnly
         ? "bestaudio[ext=m4a]/bestaudio"
@@ -533,24 +482,18 @@ app.post("/api/clip", async (req, res) => {
       "--force-keyframes-at-cuts",
       "--merge-output-format", "mp4",
       "--extractor-args", "youtube:skip=hls/manifest,dash/manifest",
-      "--remote-components", "ejs:github",
-      "--js-runtimes", "node",
       "--no-playlist",
       "--user-agent", "Mozilla/5.0",
-      "-o", rawFile,
-      url,
+      "-o", rawFile, url,
     ];
     await runYtDlp(ytArgs);
 
-    // 2️⃣ تحضير ملف الترجمة (ASS)
     if (subtitleStyle !== "none" && srtJobId) {
       const srtPath = path.join(TMP_DIR, `${srtJobId}_sub.srt`);
       if (fs.existsSync(srtPath)) {
         const srtContent = fs.readFileSync(srtPath, "utf-8");
         const assContent = srtToAss(srtContent, {
-          style: subtitleStyle,
-          fontSize: 52,
-          color: "FFFFFF",
+          style: subtitleStyle, fontSize: 52, color: "FFFFFF",
           bgColor: subtitleStyle === "center-box" ? "AA000000" : "88000000",
           position: "bottom",
         });
@@ -559,28 +502,24 @@ app.post("/api/clip", async (req, res) => {
       }
     }
 
-    // 3️⃣ بناء وتنفيذ أوامر ffmpeg
     const ffArgs = buildFFmpegArgs({
-      rawFile, outputFile,
-      bgType, bgColor, bgPreset, bgImagePath, bgVideoPath,
+      rawFile, outputFile, bgType, bgColor, bgPreset,
+      bgImagePath, bgVideoPath,
       bgBlur: Number(bgBlur), bgBrightness: Number(bgBrightness),
       videoScale: Number(videoScale), videoPosition, videoGlow,
       subtitleFile: assFile, subtitleStyle,
       watermarkText, overlayText, overlayPos,
-      speakerName, speakerTitle,
-      muteAudio, audioOnly,
+      speakerName, speakerTitle, muteAudio, audioOnly,
     });
 
     console.log("▶ ffmpeg", ffArgs.join(" "));
     await run("ffmpeg", ffArgs);
-
-    // تنظيف الملفات المؤقتة
     safeUnlink(rawFile, assFile);
 
     res.json({
       jobId,
       downloadUrl: `/output/${jobId}_reel.mp4`,
-      filename:    `reel_${outputFormat}_${startTime.replace(/:/g, "-")}.mp4`,
+      filename: `reel_${outputFormat}_${startTime.replace(/:/g, "-")}.mp4`,
     });
   } catch (err) {
     console.error(err);
@@ -589,7 +528,7 @@ app.post("/api/clip", async (req, res) => {
   }
 });
 
-// ── DELETE /api/clip/:jobId ───────────────────────────
+// ── Delete Clip ───────────────────────────────────────
 app.delete("/api/clip/:jobId", (req, res) => {
   const file = path.join(OUTPUT_DIR, `${req.params.jobId}_reel.mp4`);
   safeUnlink(file);
@@ -597,7 +536,7 @@ app.delete("/api/clip/:jobId", (req, res) => {
 });
 
 // ── تشغيل الخادم ─────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`✅ الخادم يعمل على http://localhost:${PORT}`);
-  console.log(`   المجلدات: tmp=${TMP_DIR} | output=${OUTPUT_DIR}`);
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`   Directories: tmp=${TMP_DIR} | output=${OUTPUT_DIR}`);
 });

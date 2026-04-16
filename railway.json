@@ -5,7 +5,6 @@
     "buildCommand": "npm install --production"
   },
   "deploy": {
-    "numReplicas": 1,
     "startCommand": "npm start",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10
