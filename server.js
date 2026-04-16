@@ -27,7 +27,14 @@ const UPLOAD_DIR = path.join(__dirname, "uploads");
 );
 
 // ── Middleware ────────────────────────────────────────
-app.use(cors());
+app.use(cors({
+  origin: [
+    "http://localhost:5173",
+    "https://video-maker-front-8p8mhl0dj-shrifm2017-1873s-projects.vercel.app"
+  ],
+  methods: ["GET", "POST", "DELETE"],
+  allowedHeaders: ["Content-Type"],
+}));
 app.use(express.json({ limit: "10mb" }));
 app.use("/output",  express.static(OUTPUT_DIR));
 app.use("/uploads", express.static(UPLOAD_DIR));
@@ -72,12 +79,8 @@ const run = (cmd, args, opts = {}) =>
 
 // Special handler for yt-dlp using exec and full path
 const runYtDlp = async (args, opts = {}) => {
-  const ytdlpPath = "C:\\Users\\Sherif Dahy\\AppData\\Roaming\\Python\\Python314\\Scripts\\yt-dlp.exe";
-  const argStr = args.map(a => `"${a}"`).join(" ");
-  const cmd = `"${ytdlpPath}" ${argStr}`;
-  
   return new Promise((resolve, reject) => {
-    exec(cmd, { maxBuffer: 100 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
+    execFile("yt-dlp", args, { maxBuffer: 100 * 1024 * 1024, ...opts }, (err, stdout, stderr) => {
       if (err) {
         console.error("❌ yt-dlp error:", stderr || err.message);
         return reject(stderr || err.message);
@@ -343,6 +346,9 @@ function buildFFmpegArgs({
 // ════════════════════════════════════════════════════
 
 // ── GET /api/presets ──────────────────────────────────
+app.get("/health", (req, res) => {
+  res.send("OK");
+});
 app.get("/api/presets", (_, res) => {
   res.json({
     backgrounds: Object.entries(BG_PRESETS).map(([id, { from, to }]) => ({
