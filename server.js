@@ -21,7 +21,6 @@ const TMP_DIR = path.join(__dirname, "tmp");
 const OUTPUT_DIR = path.join(__dirname, "output");
 const UPLOAD_DIR = path.join(__dirname, "uploads");
 
-// إنشاء المجلدات + التأكد من الصلاحيات
 [TMP_DIR, OUTPUT_DIR, UPLOAD_DIR].forEach((d) => {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true, mode: 0o777 });
   try {
@@ -39,19 +38,13 @@ app.use(
     origin: "*",
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-  }),
+  })
 );
 
 app.options("*", (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader(
-    "Access-Control-Allow-Methods",
-    "GET, POST, PUT, DELETE, OPTIONS",
-  );
-  res.setHeader(
-    "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Requested-With",
-  );
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With");
   res.status(200).end();
 });
 
@@ -97,14 +90,12 @@ const run = (cmd, args, opts = {}) =>
   new Promise((resolve, reject) => {
     console.log(`🔧 Running: ${cmd} ${args.slice(0, 5).join(" ")}...`);
 
-    const proc = execFile(
+    execFile(
       cmd,
       args,
       { maxBuffer: 200 * 1024 * 1024, ...opts },
       (err, stdout, stderr) => {
         if (err) {
-          // ffmpeg يكتب معلومات عادية في stderr
-          // نتحقق من exit code بدل stderr
           const exitCode = err.code;
           const lastLines = (stderr || "")
             .split("\n")
@@ -115,7 +106,6 @@ const run = (cmd, args, opts = {}) =>
           console.error(`❌ ${cmd} failed with exit code ${exitCode}`);
           console.error(`Last lines:\n${lastLines}`);
 
-          // ابحث عن الخطأ الحقيقي
           const realError = (stderr || "")
             .split("\n")
             .filter(
@@ -126,14 +116,14 @@ const run = (cmd, args, opts = {}) =>
                 l.includes("Permission denied") ||
                 l.includes("Invalid") ||
                 l.includes("Unrecognized") ||
-                l.includes("not found"),
+                l.includes("not found")
             )
             .join("\n");
 
           return reject(realError || `${cmd} exited with code ${exitCode}`);
         }
         resolve(stdout.trim());
-      },
+      }
     );
   });
 
@@ -149,7 +139,7 @@ const runYtDlp = async (args, opts = {}) => {
           return reject(stderr || err.message);
         }
         resolve(stdout.trim());
-      },
+      }
     );
   });
 };
@@ -200,10 +190,7 @@ function vttToSrt(vttText) {
   while (i < lines.length) {
     const line = lines[i];
     if (line.includes("-->")) {
-      const timing = line
-        .replace(/\./g, ",")
-        .replace(/<[^>]+>/g, "")
-        .trim();
+      const timing = line.replace(/\./g, ",").replace(/<[^>]+>/g, "").trim();
       out.push(String(counter++));
       out.push(timing);
       i++;
@@ -346,9 +333,9 @@ function buildFFmpegArgs({
           : "(H-h)/2";
 
     if (videoGlow) {
-      chains.push(`[vid_s]split[vid_a][vid_b]`);
+      chains.push("[vid_s]split[vid_a][vid_b]");
       chains.push(
-        `[vid_b]scale=iw+30:ih+30,boxblur=12:1,colorchannelmixer=aa=0.6[glow]`,
+        "[vid_b]scale=iw+30:ih+30,boxblur=12:1,colorchannelmixer=aa=0.6[glow]"
       );
       chains.push(`[bg][glow]overlay=x=${xP}-15:y=${yP}-15[bg_g]`);
       chains.push(`[bg_g][vid_a]overlay=x=${xP}:y=${yP}[comp0]`);
@@ -359,7 +346,7 @@ function buildFFmpegArgs({
   } else {
     const vidW = Math.round(W * (videoScale / 100));
     chains.push(
-      `[${vidIdx}:v]scale=${vidW}:-2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black[comp0]`,
+      `[${vidIdx}:v]scale=${vidW}:-2,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:black[comp0]`
     );
     prevLabel = "comp0";
   }
@@ -374,34 +361,43 @@ function buildFFmpegArgs({
 
   if (watermarkText) {
     textDraws.push(
-      `drawtext=fontfile='${FONT_ARABIC}':text='${escText(watermarkText)}':fontsize=26:fontcolor=white@0.8:x=20:y=20:shadowcolor=black@0.9:shadowx=2:shadowy=2`,
+      `drawtext=fontfile='${FONT_ARABIC}':text='${escText(watermarkText)}':fontsize=26:fontcolor=white@0.8:x=20:y=20:shadowcolor=black@0.9:shadowx=2:shadowy=2`
     );
   }
   if (overlayText) {
     const yTxt = overlayPos === "top" ? "100" : "h-th-100";
     textDraws.push(
-      `drawtext=fontfile='${FONT_ARABIC}':text='${escText(overlayText)}':fontsize=40:fontcolor=white:x=(w-tw)/2:y=${yTxt}:box=1:boxcolor=0x00000088:boxborderw=16:line_spacing=6`,
+      `drawtext=fontfile='${FONT_ARABIC}':text='${escText(overlayText)}':fontsize=40:fontcolor=white:x=(w-tw)/2:y=${yTxt}:box=1:boxcolor=0x00000088:boxborderw=16:line_spacing=6`
     );
   }
   if (speakerName) {
     textDraws.push(
-      `drawtext=fontfile='${FONT_ARABIC}':text='${escText(speakerName)}':fontsize=42:fontcolor=white:x=(w-tw)/2:y=h-240:box=1:boxcolor=0x00000099:boxborderw=18`,
+      `drawtext=fontfile='${FONT_ARABIC}':text='${escText(speakerName)}':fontsize=42:fontcolor=white:x=(w-tw)/2:y=h-240:box=1:boxcolor=0x00000099:boxborderw=18`
     );
     if (speakerTitle) {
       textDraws.push(
-        `drawtext=fontfile='${FONT_ARABIC}':text='${escText(speakerTitle)}':fontsize=28:fontcolor=0xcccccc:x=(w-tw)/2:y=h-175:box=1:boxcolor=0x00000077:boxborderw=12`,
+        `drawtext=fontfile='${FONT_ARABIC}':text='${escText(speakerTitle)}':fontsize=28:fontcolor=0xcccccc:x=(w-tw)/2:y=h-175:box=1:boxcolor=0x00000077:boxborderw=12`
       );
     }
   }
 
+  // ── الإصلاح المهم — تسمية آخر label ──────────────────
   const finalLabel = "vout";
   if (textDraws.length > 0) {
     chains.push(`[${prevLabel}]${textDraws.join(",")}[${finalLabel}]`);
   } else {
-    const last = chains.pop();
-    chains.push(
-      last.replace(new RegExp(`\$$${prevLabel}\$$$`), `[${finalLabel}]`),
-    );
+    const lastIdx = chains.length - 1;
+    const lastChain = chains[lastIdx];
+    const searchStr = `[${prevLabel}]`;
+    const lastPos = lastChain.lastIndexOf(searchStr);
+    if (lastPos !== -1) {
+      chains[lastIdx] =
+        lastChain.substring(0, lastPos) +
+        `[${finalLabel}]` +
+        lastChain.substring(lastPos + searchStr.length);
+    } else {
+      chains.push(`[${prevLabel}]null[${finalLabel}]`);
+    }
   }
 
   args.push("-filter_complex", chains.join(";"));
@@ -417,18 +413,15 @@ function buildFFmpegArgs({
   if (bgIdx >= 0) args.push("-shortest");
 
   args.push(
-    "-c:v",
-    "libx264",
-    "-preset",
-    "fast",
-    "-crf",
-    "22",
-    "-pix_fmt",
-    "yuv420p",
-    "-movflags",
-    "+faststart",
-    outputFile,
+    "-c:v", "libx264",
+    "-preset", "fast",
+    "-crf", "22",
+    "-pix_fmt", "yuv420p",
+    "-movflags", "+faststart",
+    outputFile
   );
+
+  console.log("📋 Filter complex:", chains.join(";"));
 
   return args;
 }
@@ -442,13 +435,7 @@ app.get("/", (req, res) => {
   res.json({
     message: "Video Maker Backend is running!",
     version: "2.0.0",
-    endpoints: [
-      "/health",
-      "/api/presets",
-      "/api/info",
-      "/api/clip",
-      "/api/debug",
-    ],
+    endpoints: ["/health", "/api/presets", "/api/info", "/api/clip", "/api/debug"],
   });
 });
 
@@ -479,7 +466,6 @@ app.get("/api/debug", async (req, res) => {
     tools: {},
   };
 
-  // فحص صلاحية الكتابة
   try {
     const testFile = path.join(TMP_DIR, "_write_test_" + Date.now());
     fs.writeFileSync(testFile, "test");
@@ -490,29 +476,20 @@ app.get("/api/debug", async (req, res) => {
     results.dirs.tmpError = e.message;
   }
 
-  // فحص yt-dlp
   try {
     const ytVer = await run("yt-dlp", ["--version"]);
     results.tools.ytdlp = { installed: true, version: ytVer };
   } catch (err) {
-    results.tools.ytdlp = {
-      installed: false,
-      error: String(err).slice(0, 200),
-    };
+    results.tools.ytdlp = { installed: false, error: String(err).slice(0, 200) };
   }
 
-  // فحص ffmpeg
   try {
     const ffVer = await run("ffmpeg", ["-version"]);
     results.tools.ffmpeg = { installed: true, version: ffVer.split("\n")[0] };
   } catch (err) {
-    results.tools.ffmpeg = {
-      installed: false,
-      error: String(err).slice(0, 200),
-    };
+    results.tools.ffmpeg = { installed: false, error: String(err).slice(0, 200) };
   }
 
-  // فحص deno
   try {
     const denoVer = await run("deno", ["--version"]);
     results.tools.deno = { installed: true, version: denoVer.split("\n")[0] };
@@ -524,145 +501,6 @@ app.get("/api/debug", async (req, res) => {
 });
 
 // ── Debug yt-dlp test ─────────────────────────────────
-// ── اختبار ffmpeg مباشر ───────────────────────────────
-app.post("/api/debug/ffmpeg", async (req, res) => {
-  const testFile = path.join(TMP_DIR, "test_input.mp4");
-  const testOutput = path.join(TMP_DIR, "test_output.mp4");
-
-  try {
-    // 1. حمّل فيديو قصير
-    await runYtDlp([
-      "-f",
-      "best[height<=360][ext=mp4]/best",
-      "--download-sections",
-      "*0:00-0:05",
-      "--force-keyframes-at-cuts",
-      "--merge-output-format",
-      "mp4",
-      ...COMMON_YT_ARGS,
-      "--no-playlist",
-      "--paths",
-      TMP_DIR,
-      "--output",
-      "test_input.mp4",
-      req.body.url || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    ]);
-
-    // 2. اختبر ffmpeg بأبسط أمر ممكن
-    const simpleArgs = [
-      "-y",
-      "-i",
-      testFile,
-      "-t",
-      "5",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "ultrafast",
-      "-crf",
-      "28",
-      "-c:a",
-      "aac",
-      "-movflags",
-      "+faststart",
-      testOutput,
-    ];
-
-    console.log("🧪 Testing ffmpeg:", simpleArgs.join(" "));
-    await run("ffmpeg", simpleArgs);
-
-    const exists = fs.existsSync(testOutput);
-    const size = exists ? fs.statSync(testOutput).size : 0;
-
-    safeUnlink(testFile, testOutput);
-
-    res.json({
-      success: true,
-      outputExists: exists,
-      outputSize: size,
-      message: "ffmpeg works!",
-    });
-  } catch (err) {
-    safeUnlink(testFile, testOutput);
-    res.json({
-      success: false,
-      error: String(err).slice(-800),
-    });
-  }
-});
-
-// ── اختبار filter_complex ─────────────────────────────
-app.post("/api/debug/filter", async (req, res) => {
-  const testFile = path.join(TMP_DIR, "test_filter_input.mp4");
-  const testOutput = path.join(TMP_DIR, "test_filter_output.mp4");
-
-  try {
-    await runYtDlp([
-      "-f",
-      "best[height<=360][ext=mp4]/best",
-      "--download-sections",
-      "*0:00-0:05",
-      "--force-keyframes-at-cuts",
-      "--merge-output-format",
-      "mp4",
-      ...COMMON_YT_ARGS,
-      "--no-playlist",
-      "--paths",
-      TMP_DIR,
-      "--output",
-      "test_filter_input.mp4",
-      req.body.url || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-    ]);
-
-    // اختبر مع filter_complex بسيط (scale + pad)
-    const filterArgs = [
-      "-y",
-      "-i",
-      testFile,
-      "-filter_complex",
-      "[0:v]scale=918:-2,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black[vout]",
-      "-map",
-      "[vout]",
-      "-map",
-      "0:a?",
-      "-c:v",
-      "libx264",
-      "-preset",
-      "ultrafast",
-      "-crf",
-      "28",
-      "-c:a",
-      "aac",
-      "-movflags",
-      "+faststart",
-      "-t",
-      "5",
-      testOutput,
-    ];
-
-    console.log("🧪 Testing filter_complex:", filterArgs.join(" "));
-    await run("ffmpeg", filterArgs);
-
-    const exists = fs.existsSync(testOutput);
-    const size = exists ? fs.statSync(testOutput).size : 0;
-
-    safeUnlink(testFile, testOutput);
-
-    res.json({
-      success: true,
-      outputExists: exists,
-      outputSize: size,
-      message: "filter_complex works!",
-    });
-  } catch (err) {
-    safeUnlink(testFile, testOutput);
-    res.json({
-      success: false,
-      error: String(err).slice(-800),
-    });
-  }
-});
-
 app.post("/api/debug/ytdlp", async (req, res) => {
   const { url } = req.body;
   if (!url) return res.status(400).json({ error: "الرابط مطلوب" });
@@ -672,8 +510,7 @@ app.post("/api/debug/ytdlp", async (req, res) => {
       "--dump-json",
       "--no-playlist",
       ...COMMON_YT_ARGS,
-      "--paths",
-      TMP_DIR,
+      "--paths", TMP_DIR,
       url,
     ]);
     res.json({ success: true, dataLength: json.length });
@@ -682,13 +519,99 @@ app.post("/api/debug/ytdlp", async (req, res) => {
   }
 });
 
+// ── Debug ffmpeg test ─────────────────────────────────
+app.post("/api/debug/ffmpeg", async (req, res) => {
+  const testFile = path.join(TMP_DIR, "test_input.mp4");
+  const testOutput = path.join(TMP_DIR, "test_output.mp4");
+
+  try {
+    await runYtDlp([
+      "-f", "best[height<=360][ext=mp4]/best",
+      "--download-sections", "*0:00-0:05",
+      "--force-keyframes-at-cuts",
+      "--merge-output-format", "mp4",
+      ...COMMON_YT_ARGS,
+      "--no-playlist",
+      "--paths", TMP_DIR,
+      "--output", "test_input.mp4",
+      req.body.url || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    ]);
+
+    const simpleArgs = [
+      "-y", "-i", testFile,
+      "-t", "5",
+      "-c:v", "libx264",
+      "-preset", "ultrafast",
+      "-crf", "28",
+      "-c:a", "aac",
+      "-movflags", "+faststart",
+      testOutput,
+    ];
+
+    await run("ffmpeg", simpleArgs);
+
+    const exists = fs.existsSync(testOutput);
+    const size = exists ? fs.statSync(testOutput).size : 0;
+    safeUnlink(testFile, testOutput);
+
+    res.json({ success: true, outputExists: exists, outputSize: size, message: "ffmpeg works!" });
+  } catch (err) {
+    safeUnlink(testFile, testOutput);
+    res.json({ success: false, error: String(err).slice(-800) });
+  }
+});
+
+// ── Debug filter_complex test ─────────────────────────
+app.post("/api/debug/filter", async (req, res) => {
+  const testFile = path.join(TMP_DIR, "test_filter_input.mp4");
+  const testOutput = path.join(TMP_DIR, "test_filter_output.mp4");
+
+  try {
+    await runYtDlp([
+      "-f", "best[height<=360][ext=mp4]/best",
+      "--download-sections", "*0:00-0:05",
+      "--force-keyframes-at-cuts",
+      "--merge-output-format", "mp4",
+      ...COMMON_YT_ARGS,
+      "--no-playlist",
+      "--paths", TMP_DIR,
+      "--output", "test_filter_input.mp4",
+      req.body.url || "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
+    ]);
+
+    const filterArgs = [
+      "-y", "-i", testFile,
+      "-filter_complex",
+      "[0:v]scale=918:-2,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black[vout]",
+      "-map", "[vout]",
+      "-map", "0:a?",
+      "-c:v", "libx264",
+      "-preset", "ultrafast",
+      "-crf", "28",
+      "-c:a", "aac",
+      "-movflags", "+faststart",
+      "-t", "5",
+      testOutput,
+    ];
+
+    await run("ffmpeg", filterArgs);
+
+    const exists = fs.existsSync(testOutput);
+    const size = exists ? fs.statSync(testOutput).size : 0;
+    safeUnlink(testFile, testOutput);
+
+    res.json({ success: true, outputExists: exists, outputSize: size, message: "filter_complex works!" });
+  } catch (err) {
+    safeUnlink(testFile, testOutput);
+    res.json({ success: false, error: String(err).slice(-800) });
+  }
+});
+
 // ── Presets ───────────────────────────────────────────
 app.get("/api/presets", (_, res) => {
   res.json({
     backgrounds: Object.entries(BG_PRESETS).map(([id, { from, to }]) => ({
-      id,
-      from: `#${from}`,
-      to: `#${to}`,
+      id, from: `#${from}`, to: `#${to}`,
     })),
   });
 });
@@ -702,8 +625,7 @@ app.post("/api/info", async (req, res) => {
       "--dump-json",
       "--no-playlist",
       ...COMMON_YT_ARGS,
-      "--paths",
-      TMP_DIR,
+      "--paths", TMP_DIR,
       url,
     ]);
 
@@ -717,7 +639,7 @@ app.post("/api/info", async (req, res) => {
       hasSubtitles: !!(d.subtitles && Object.keys(d.subtitles).length > 0),
       availableLangs: Object.keys(d.subtitles || {}),
       formats: (d.formats || [])
-        .filter((f) => f.height && f.vcodec !== "none")
+        .filter((f) => f.height)
         .map((f) => ({ id: f.format_id, quality: `${f.height}p`, ext: f.ext }))
         .filter((v, i, s) => s.findIndex((t) => t.quality === v.quality) === i)
         .sort((a, b) => parseInt(b.quality) - parseInt(a.quality)),
@@ -738,24 +660,19 @@ app.post("/api/transcript", async (req, res) => {
 
   try {
     await runYtDlp([
-      "--write-subs",
-      "--write-auto-subs",
-      "--sub-lang",
-      `${lang},${lang === "ar" ? "en" : "ar"}`,
-      "--sub-format",
-      "vtt/srt",
+      "--write-subs", "--write-auto-subs",
+      "--sub-lang", `${lang},${lang === "ar" ? "en" : "ar"}`,
+      "--sub-format", "vtt/srt",
       ...COMMON_YT_ARGS,
-      "--skip-download",
-      "--no-playlist",
-      "-o",
-      subBase,
+      "--skip-download", "--no-playlist",
+      "-o", subBase,
       url,
     ]).catch(() => {});
 
     const files = fs
       .readdirSync(TMP_DIR)
       .filter(
-        (f) => f.startsWith(path.basename(subBase)) && /\.(vtt|srt)$/i.test(f),
+        (f) => f.startsWith(path.basename(subBase)) && /\.(vtt|srt)$/i.test(f)
       );
 
     if (files.length === 0)
@@ -805,44 +722,25 @@ app.post("/api/upload-bg", upload.single("file"), (req, res) => {
 // ── Clip ──────────────────────────────────────────────
 app.post("/api/clip", async (req, res) => {
   const {
-    url,
-    startTime,
-    endTime,
-    quality = "720",
-    muteAudio = false,
-    audioOnly = false,
-    bgType = "none",
-    bgColor = "#0a1628",
-    bgPreset = "islamic-dark",
-    bgImagePath = null,
-    bgVideoPath = null,
-    bgBlur = 0,
-    bgBrightness = 1,
-    videoScale = 85,
-    videoPosition = "center",
-    videoGlow = false,
-    subtitleStyle = "none",
-    subtitleLang = "ar",
-    srtJobId = null,
-    watermarkText = "",
-    overlayText = "",
-    overlayPos = "bottom",
-    speakerName = "",
-    speakerTitle = "",
+    url, startTime, endTime, quality = "720",
+    muteAudio = false, audioOnly = false,
+    bgType = "none", bgColor = "#0a1628", bgPreset = "islamic-dark",
+    bgImagePath = null, bgVideoPath = null,
+    bgBlur = 0, bgBrightness = 1,
+    videoScale = 85, videoPosition = "center", videoGlow = false,
+    subtitleStyle = "none", subtitleLang = "ar", srtJobId = null,
+    watermarkText = "", overlayText = "", overlayPos = "bottom",
+    speakerName = "", speakerTitle = "",
     outputFormat = "reels",
   } = req.body;
 
   if (!url || !startTime || !endTime)
-    return res
-      .status(400)
-      .json({ error: "الرابط ووقت البداية والنهاية مطلوبة" });
+    return res.status(400).json({ error: "الرابط ووقت البداية والنهاية مطلوبة" });
 
   const startSec = toSec(startTime);
   const endSec = toSec(endTime);
   if (endSec <= startSec)
-    return res
-      .status(400)
-      .json({ error: "وقت النهاية يجب أن يكون بعد وقت البداية" });
+    return res.status(400).json({ error: "وقت النهاية يجب أن يكون بعد وقت البداية" });
 
   const jobId = uuidv4();
   const rawFilename = `${jobId}_raw.mp4`;
@@ -853,21 +751,16 @@ app.post("/api/clip", async (req, res) => {
   try {
     // 1️⃣ تحميل مقطع الفيديو
     const ytArgs = [
-      "-f",
-      audioOnly
+      "-f", audioOnly
         ? "bestaudio[ext=m4a]/bestaudio"
-        : `bestvideo[height<=${quality}][ext=mp4]+bestaudio[ext=m4a]/best[height<=${quality}]`,
-      "--download-sections",
-      `*${startTime}-${endTime}`,
+        : `best[height<=${quality}][ext=mp4]/bestvideo[height<=${quality}]+bestaudio/best`,
+      "--download-sections", `*${startTime}-${endTime}`,
       "--force-keyframes-at-cuts",
-      "--merge-output-format",
-      "mp4",
+      "--merge-output-format", "mp4",
       ...COMMON_YT_ARGS,
       "--no-playlist",
-      "--paths",
-      TMP_DIR,
-      "--output",
-      rawFilename,
+      "--paths", TMP_DIR,
+      "--output", rawFilename,
       url,
     ];
     await runYtDlp(ytArgs);
@@ -891,33 +784,19 @@ app.post("/api/clip", async (req, res) => {
 
     // 3️⃣ بناء وتنفيذ أوامر ffmpeg
     const ffArgs = buildFFmpegArgs({
-      rawFile,
-      outputFile,
-      bgType,
-      bgColor,
-      bgPreset,
-      bgImagePath,
-      bgVideoPath,
-      bgBlur: Number(bgBlur),
-      bgBrightness: Number(bgBrightness),
-      videoScale: Number(videoScale),
-      videoPosition,
-      videoGlow,
-      subtitleFile: assFile,
-      subtitleStyle,
-      watermarkText,
-      overlayText,
-      overlayPos,
-      speakerName,
-      speakerTitle,
-      muteAudio,
-      audioOnly,
+      rawFile, outputFile, bgType, bgColor, bgPreset,
+      bgImagePath, bgVideoPath,
+      bgBlur: Number(bgBlur), bgBrightness: Number(bgBrightness),
+      videoScale: Number(videoScale), videoPosition, videoGlow,
+      subtitleFile: assFile, subtitleStyle,
+      watermarkText, overlayText, overlayPos,
+      speakerName, speakerTitle, muteAudio, audioOnly,
     });
 
     console.log("▶ ffmpeg args count:", ffArgs.length);
     console.log("▶ Input file exists:", fs.existsSync(rawFile));
     console.log("▶ Input file size:", fs.existsSync(rawFile) ? fs.statSync(rawFile).size : 0);
-    
+
     try {
       await run("ffmpeg", ffArgs);
       console.log("✅ ffmpeg completed successfully");
@@ -939,9 +818,7 @@ app.post("/api/clip", async (req, res) => {
   } catch (err) {
     console.error(err);
     safeUnlink(rawFile, assFile, outputFile);
-    res
-      .status(500)
-      .json({ error: `خطأ في المعالجة: ${String(err).slice(0, 300)}` });
+    res.status(500).json({ error: `خطأ في المعالجة: ${String(err).slice(0, 300)}` });
   }
 });
 
