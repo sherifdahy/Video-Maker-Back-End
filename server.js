@@ -20,8 +20,9 @@ const PORT = process.env.PORT || 3001;
 const TMP_DIR = path.join(__dirname, "tmp");
 const OUTPUT_DIR = path.join(__dirname, "output");
 const UPLOAD_DIR = path.join(__dirname, "uploads");
+const COOKIES_DIR = path.join(__dirname, "user_cookies");
 
-[TMP_DIR, OUTPUT_DIR, UPLOAD_DIR].forEach((d) => {
+[TMP_DIR, OUTPUT_DIR, UPLOAD_DIR, COOKIES_DIR].forEach((d) => {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true, mode: 0o777 });
   try {
     fs.chmodSync(d, 0o777);
@@ -184,13 +185,27 @@ if (process.env.COOKIES_CONTENT && !fs.existsSync(COOKIES_PATH)) {
 }
 
 const hasCookies = fs.existsSync(COOKIES_PATH);
-const cookieArgs = hasCookies ? ["--cookies", COOKIES_PATH] : [];
+const defaultCookieArgs = hasCookies ? ["--cookies", COOKIES_PATH] : [];
 
 if (hasCookies) {
-  console.log("🍪 cookies.txt found — will use for YouTube requests");
+  console.log("🍪 cookies.txt found — will use as default for YouTube requests");
 } else {
   console.log("⚠️ No cookies.txt — YouTube may block some requests");
 }
+
+// ── Get cookies args for a request ────────────────────
+const getCookieArgs = (cookieId = null) => {
+  if (cookieId) {
+    const userCookiePath = path.join(COOKIES_DIR, `${cookieId}.txt`);
+    if (fs.existsSync(userCookiePath)) {
+      console.log(`🍪 Using cookies for session: ${cookieId}`);
+      return ["--cookies", userCookiePath];
+    } else {
+      console.warn(`⚠️ Cookie ID not found: ${cookieId}, using default`);
+    }
+  }
+  return defaultCookieArgs;
+};
 
 // ── Common yt-dlp args ────────────────────────────────
 const COMMON_YT_ARGS = [
@@ -519,10 +534,11 @@ app.get("/api/debug", async (req, res) => {
 
 // ── Debug yt-dlp test ─────────────────────────────────
 app.post("/api/debug/ytdlp", async (req, res) => {
-  const { url } = req.body;
+  const { url, cookieId } = req.body;
   if (!url) return res.status(400).json({ error: "الرابط مطلوب" });
 
   try {
+    const cookieArgs = getCookieArgs(cookieId);
     const json = await runYtDlp([
       "--dump-json",
       "--no-playlist",
@@ -540,10 +556,12 @@ app.post("/api/debug/ytdlp", async (req, res) => {
 
 // ── Debug ffmpeg test ─────────────────────────────────
 app.post("/api/debug/ffmpeg", async (req, res) => {
+  const { cookieId } = req.body;
   const testFile = path.join(TMP_DIR, "test_input.mp4");
   const testOutput = path.join(TMP_DIR, "test_output.mp4");
 
   try {
+    const cookieArgs = getCookieArgs(cookieId);
     await runYtDlp([
       "-f",
       "best[height<=360][ext=mp4]/best",
@@ -601,10 +619,12 @@ app.post("/api/debug/ffmpeg", async (req, res) => {
 
 // ── Debug filter_complex test ─────────────────────────
 app.post("/api/debug/filter", async (req, res) => {
+  const { cookieId } = req.body;
   const testFile = path.join(TMP_DIR, "test_filter_input.mp4");
   const testOutput = path.join(TMP_DIR, "test_filter_output.mp4");
 
   try {
+    const cookieArgs = getCookieArgs(cookieId);
     await runYtDlp([
       "-f",
       "best[height<=360][ext=mp4]/best",
@@ -677,11 +697,45 @@ app.get("/api/presets", (_, res) => {
   });
 });
 
+// ── Upload Cookies ────────────────────────────────────
+app.post("/api/upload-cookies", upload.single("cookies"), (req, res) => {
+  if (!req.file && !req.body.cookieText) {
+    return res.status(400).json({ error: "يجب إرسال ملف cookies أو نص" });
+  }
+
+  try {
+    const cookieId = uuidv4();
+    const cookiePath = path.join(COOKIES_DIR, `${cookieId}.txt`);
+    
+    if (req.file) {
+      // إذا تم رفع ملف
+      const content = fs.readFileSync(req.file.path, "utf-8");
+      fs.writeFileSync(cookiePath, content, "utf-8");
+      // حذف الملف المؤقت
+      fs.unlink(req.file.path, () => {});
+    } else {
+      // إذا تم إرسال نص
+      fs.writeFileSync(cookiePath, req.body.cookieText, "utf-8");
+    }
+    
+    console.log(`✅ Cookies uploaded with ID: ${cookieId}`);
+    res.json({
+      success: true,
+      cookieId,
+      message: "تم رفع الـ cookies بنجاح! استخدم الـ ID دا في الطلبات التالية",
+    });
+  } catch (err) {
+    console.error("❌ Cookie upload error:", err.message);
+    res.status(500).json({ error: "فشل في حفظ الـ cookies: " + err.message });
+  }
+});
+
 // ── Info ──────────────────────────────────────────────
 app.post("/api/info", async (req, res) => {
-  const { url } = req.body;
+  const { url, cookieId } = req.body;
   if (!url) return res.status(400).json({ error: "الرابط مطلوب" });
   try {
+    const cookieArgs = getCookieArgs(cookieId);
     const json = await runYtDlp([
       "--dump-json",
       "--no-playlist",
@@ -715,13 +769,14 @@ app.post("/api/info", async (req, res) => {
 
 // ── Transcript ────────────────────────────────────────
 app.post("/api/transcript", async (req, res) => {
-  const { url, lang = "ar" } = req.body;
+  const { url, lang = "ar", cookieId } = req.body;
   if (!url) return res.status(400).json({ error: "الرابط مطلوب" });
 
   const jobId = uuidv4();
   const subBase = path.join(TMP_DIR, `${jobId}_sub`);
 
   try {
+    const cookieArgs = getCookieArgs(cookieId);
     await runYtDlp([
       "--write-subs",
       "--write-auto-subs",
@@ -838,6 +893,7 @@ app.post("/api/clip", async (req, res) => {
 
   try {
     // 1️⃣ تحميل مقطع الفيديو
+    const cookieArgs = getCookieArgs(req.body.cookieId);
     const ytArgs = [
       "-f",
       audioOnly
